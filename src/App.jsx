@@ -43,79 +43,125 @@ export default function App() {
   }, [activeTimer]);
 
   // --- 🧠 时间轴布局引擎 ---
-  const pointTimes = useMemo(() => {
-    const pts = currentPlans.filter(p => p.timeType === 'point').map(p => timeToMins(p.startTime));
-    return [...new Set(pts)].sort((a, b) => a - b);
-  }, [currentPlans]);
-
   const { getOffsetY, totalHeight } = useMemo(() => {
     const PX_PER_MIN = 80 / 60;
     const GAP_HEIGHT = 48;
+
+    // 1. 收集所有事件，赋予点任务虚拟的 1 分钟结束时间以计算布局
     const events = [];
     currentPlans.filter(p => p.timeType !== 'none').forEach(p => {
       const start = timeToMins(p.startTime);
-      const end = p.timeType === 'range' ? timeToMins(p.endTime) : start;
-      events.push({ start, end });
+      const isPoint = p.timeType === 'point';
+      const end = isPoint ? start + 1 : timeToMins(p.endTime);
+      events.push({ id: p.id, start, end, type: p.timeType, isPlan: true });
     });
     currentActuals.forEach(a => {
-      events.push({ start: timeToMins(a.actualStart), end: timeToMins(a.actualEnd) });
+      const start = timeToMins(a.actualStart);
+      const endRaw = timeToMins(a.actualEnd);
+      const linkedPlan = a.fromPlanId ? currentPlans.find(p => p.id === a.fromPlanId) : null;
+      const isPoint = (linkedPlan?.timeType === 'point' && start === endRaw) || (start === endRaw);
+      const end = isPoint ? start + 1 : endRaw;
+      events.push({ id: a.id, start, end, type: isPoint ? 'point' : 'range', isPlan: false });
     });
+
     events.sort((a, b) => a.start - b.start);
 
+    // 2. 合并 10 分钟内相邻的事件形成活跃区间
     const activeIntervals = [];
     events.forEach(ev => {
-      if (activeIntervals.length === 0) activeIntervals.push([ev.start, ev.end]);
+      if (activeIntervals.length === 0) activeIntervals.push({ start: ev.start, end: ev.end, events: [ev] });
       else {
         const last = activeIntervals[activeIntervals.length - 1];
-        if (ev.start <= last[1] + 10) last[1] = Math.max(last[1], ev.end);
-        else activeIntervals.push([ev.start, ev.end]);
+        if (ev.start <= last.end + 10) {
+          last.end = Math.max(last.end, ev.end);
+          last.events.push(ev);
+        } else {
+          activeIntervals.push({ start: ev.start, end: ev.end, events: [ev] });
+        }
       }
     });
 
+    // 3. 基于有向无环图 (DAG) 计算每个关键时间点的精确 Y 坐标
+    const timeToY = new Map();
+    let currentBaseY = 0;
+
+    activeIntervals.forEach((interval, idx) => {
+      if (idx > 0) currentBaseY += GAP_HEIGHT;
+
+      const timesSet = new Set();
+      interval.events.forEach(ev => { timesSet.add(ev.start); timesSet.add(ev.end); });
+      const times = Array.from(timesSet).sort((a, b) => a - b);
+      interval.times = times; // 缓存供后续插值使用
+
+      const yMap = new Map();
+      yMap.set(times[0], currentBaseY);
+
+      // 逐步推演 Y 坐标，强制应用最小高度约束
+      for (let i = 1; i < times.length; i++) {
+        const t = times[i];
+        const tPrev = times[i - 1];
+        let y = yMap.get(tPrev) + (t - tPrev) * PX_PER_MIN;
+
+        interval.events.forEach(ev => {
+          if (ev.end === t) {
+            const minHeight = ev.type === 'point' ? 48 : 64;
+            const evStartY = yMap.get(ev.start);
+            if (evStartY !== undefined) {
+              y = Math.max(y, evStartY + minHeight); // 如果高度不够，强行推移 Y 坐标
+            }
+          }
+        });
+        yMap.set(t, y);
+      }
+
+      times.forEach(t => timeToY.set(t, yMap.get(t)));
+      currentBaseY = yMap.get(times[times.length - 1]);
+    });
+
+    // 4. 返回查表与插值函数
     const getOffsetY = (mins, role = 'exact') => {
       let y = 0;
       let lastEnd = null;
-      for (const [start, end] of activeIntervals) {
-        if (lastEnd !== null) {
-          y += GAP_HEIGHT;
-          if (mins > lastEnd && mins < start) return y - GAP_HEIGHT / 2;
-        }
-        if (mins < start) return y;
+      let lastEndY = 0;
 
-        let currMin = start;
-        for (const pt of pointTimes) {
-          if (pt >= start && pt <= end) {
-            if (pt < mins) {
-              y += (pt - currMin) * PX_PER_MIN + 46;
-              currMin = pt;
-            } else if (pt === mins) {
-              y += (pt - currMin) * PX_PER_MIN;
-              if (role === 'arrive') return y;
-              y += 8;
-              if (role === 'point') return y;
-              y += 30;
-              y += 8;
-              if (role === 'leave') return y;
-              return y - 23;
+      for (let i = 0; i < activeIntervals.length; i++) {
+        const interval = activeIntervals[i];
+        
+        if (lastEnd !== null && mins > lastEnd && mins < interval.start) {
+          return lastEndY + GAP_HEIGHT / 2;
+        }
+        if (mins < interval.start) return i === 0 ? 0 : y;
+
+        if (mins >= interval.start && mins <= interval.end) {
+          if (timeToY.has(mins)) {
+            return timeToY.get(mins);
+          } else {
+            // 区间内插值计算
+            const times = interval.times;
+            let t0 = times[0], t1 = times[times.length - 1];
+            for (let j = 0; j < times.length - 1; j++) {
+              if (mins >= times[j] && mins <= times[j + 1]) {
+                t0 = times[j]; t1 = times[j + 1]; break;
+              }
             }
+            const y0 = timeToY.get(t0);
+            const y1 = timeToY.get(t1);
+            return t1 === t0 ? y0 : y0 + (y1 - y0) * ((mins - t0) / (t1 - t0));
           }
         }
-        if (mins <= end) {
-          y += (mins - currMin) * PX_PER_MIN;
-          return y;
-        }
-        y += (end - currMin) * PX_PER_MIN;
-        lastEnd = end;
+        lastEnd = interval.end;
+        lastEndY = timeToY.get(interval.end);
       }
+      
       if (lastEnd !== null && mins > lastEnd) {
-        y += GAP_HEIGHT + (mins - lastEnd) * PX_PER_MIN;
+        return lastEndY + GAP_HEIGHT + (mins - lastEnd) * PX_PER_MIN;
       }
       return y;
     };
-    
-    const maxTime = activeIntervals.length > 0 ? activeIntervals[activeIntervals.length - 1][1] : 0;
-    return { getOffsetY, totalHeight: activeIntervals.length > 0 ? getOffsetY(maxTime, 'leave') : 0 };
-  }, [currentPlans, currentActuals, pointTimes]);
+
+    const maxTime = activeIntervals.length > 0 ? activeIntervals[activeIntervals.length - 1].end : 0;
+    return { getOffsetY, totalHeight: activeIntervals.length > 0 ? getOffsetY(maxTime) + 40 : 0 };
+  }, [currentPlans, currentActuals]);
 
   // --- 操作回调 ---
   const handleToggleComplete = (id) => setPlans(plans.map(p => p.id === id ? { ...p, completed: !p.completed } : p));
@@ -132,6 +178,22 @@ export default function App() {
     if (!activeTimer) return;
     const endDate = new Date();
     const startDate = new Date(activeTimer.startTimestamp);
+    
+    // 计算已计时的分钟数
+    const elapsedMins = (endDate.getTime() - startDate.getTime()) / 60000;
+
+    // 5分钟保护逻辑
+    if (elapsedMins < 5) {
+      const confirmStop = window.confirm('本次计时不足 5 分钟，如果现在停止记录将不会保留，确定要停止吗？');
+      if (confirmStop) {
+        // 用户确认停止：清空定时器，但不保存记录
+        setActiveTimer(null);
+      }
+      // 如果用户取消，直接 return，计时器继续运行
+      return; 
+    }
+
+    // 超过 5 分钟，正常保存记录
     const newActual = {
       id: `a_${Date.now()}`, date: formatDate(endDate), name: activeTimer.name, emoji: activeTimer.emoji,
       actualStart: `${startDate.getHours().toString().padStart(2, '0')}:${startDate.getMinutes().toString().padStart(2, '0')}`,

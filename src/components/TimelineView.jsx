@@ -4,7 +4,8 @@ import { TASK_COLORS } from '../utils/constants';
 import { timeToMins, formatMins, formatDuration, isOverlap } from '../utils/helpers';
 
 export default function TimelineView({ plans, actuals, totalHeight, getOffsetY, activeTimer, onEditPlan, onEditActual, onToggleComplete, onStartTimer }) {
-  const [tooltipData, setTooltipData] = useState(null);
+  const [activePlanClusters, setActivePlanClusters] = useState({});
+  const [activeActualClusters, setActiveActualClusters] = useState({});
 
   const timedPlans = plans.filter(p => p.timeType !== 'none');
   const untimedPlans = plans.filter(p => p.timeType === 'none');
@@ -41,18 +42,22 @@ export default function TimelineView({ plans, actuals, totalHeight, getOffsetY, 
       const end = isPlan ? (item.timeType === 'range' ? timeToMins(item.endTime) : start) : timeToMins(item.actualEnd);
       let col = 0;
       let hasOverlap = false;
+      let myClusterId = item.id;
 
       for (let j = 0; j < i; j++) {
         const prev = validItems[j];
         const prevStart = timeToMins(isPlan ? prev.startTime : prev.actualStart);
         const prevEnd = isPlan ? (prev.timeType === 'range' ? timeToMins(prev.endTime) : prevStart) : timeToMins(prev.actualEnd);
-        if (isOverlap(start, end, prevStart, prevEnd)) {
+        
+        // 👇 新增：补充 start === prevStart 的判断，解决同起点时的检测失效
+        if (isOverlap(start, end, prevStart, prevEnd) || start === prevStart) {
           hasOverlap = true;
           result[prev.id].isOverlapping = true;
           if (result[prev.id].columnIndex === 0) col = 1;
+          myClusterId = result[prev.id].clusterId;
         }
       }
-      result[item.id] = { isOverlapping: hasOverlap, columnIndex: col };
+      result[item.id] = { isOverlapping: hasOverlap, columnIndex: col, clusterId: myClusterId };
     });
     return result;
   };
@@ -62,23 +67,6 @@ export default function TimelineView({ plans, actuals, totalHeight, getOffsetY, 
 
   return (
     <div>
-      {/* 气泡组件和全屏背景遮罩 */}
-      {tooltipData && (
-        <>
-          <div className="fixed inset-0 z-[100]" onClick={() => setTooltipData(null)} />
-          <div className="absolute z-[110] bg-[#1F2937] text-white p-3 rounded-xl shadow-xl border border-gray-700 pointer-events-none transition-opacity"
-            style={{
-              top: tooltipData.top,
-              left: tooltipData.isLeft ? 'calc(50% - 40px)' : 'calc(50% + 40px)',
-              transform: tooltipData.isLeft ? 'translate(-100%, -50%)' : 'translate(0, -50%)',
-              width: '180px'
-            }}>
-            <div className="font-bold text-sm mb-1">{tooltipData.name} {tooltipData.emoji}</div>
-            <div className="text-xs text-gray-300">{tooltipData.timeRange}</div>
-            <div className="text-xs text-indigo-300 font-mono mt-1">{tooltipData.duration}</div>
-          </div>
-        </>
-      )}
 
       {/* ====== 未安排时间的任务 ====== */}
       {untimedPlans.length > 0 && (
@@ -140,33 +128,38 @@ export default function TimelineView({ plans, actuals, totalHeight, getOffsetY, 
             const startMins = timeToMins(plan.startTime);
             const endMins = plan.timeType === 'range' ? timeToMins(plan.endTime) : startMins;
             const top = getOffsetY(startMins, getStartRole(plan));
-            const height = plan.timeType === 'point' ? 30 : Math.max(getOffsetY(endMins, getEndRole(plan)) - top, 40);
+            const height = plan.timeType === 'point' ? 48 : Math.max(getOffsetY(endMins, getEndRole(plan)) - top, 64);
             const colorObj = TASK_COLORS.find(c => c.hex === plan.color);
             const overlaps = planOverlaps[plan.id];
+            const isActivePlan = !overlaps.isOverlapping || 
+              (activePlanClusters[overlaps.clusterId] 
+               ? activePlanClusters[overlaps.clusterId] === plan.id 
+               : overlaps.columnIndex === 0);
 
             return (
-              <div key={`plan-${plan.id}`} className={`absolute transition-opacity duration-300 ${plan.completed ? 'opacity-40' : 'opacity-100'}`}
-                style={{ top, height, left: 0, right: 0 }}>
+              <div key={`plan-${plan.id}`} className={`absolute transition-opacity duration-300 pointer-events-none ${plan.completed ? 'opacity-40' : 'opacity-100'}`}
+               style={{ top, height, left: 0, right: 0 }}>
 
                 {/* 浅色块 */}
-                <div className="absolute rounded-xl border-2 border-white cursor-pointer shadow-sm hover:brightness-95 transition-all"
+                <div className="absolute border-2 border-white cursor-pointer shadow-sm hover:brightness-95 transition-all pointer-events-auto"
                   style={{
-                    left: overlaps.isOverlapping ? (overlaps.columnIndex === 0 ? 'calc(50% - 36px)' : 'calc(50% - 20px)') : 'calc(50% - 36px)',
-                    width: overlaps.isOverlapping ? '16px' : '32px',
-                    top: 0, height: '100%', backgroundColor: colorObj?.light
+                   left: overlaps.isOverlapping ? (overlaps.columnIndex === 0 ? 'calc(50% - 52px)' : 'calc(50% - 28px)') : 'calc(50% - 52px)',
+                   width: overlaps.isOverlapping ? '28px' : '48px',
+                   top: 0, height: '100%', backgroundColor: colorObj?.light,
+                   borderRadius: plan.timeType === 'point' ? '24px' : '16px' // 48x48的24px圆角即为正圆，范围任务则是更大的 16px 圆角
                   }}
                   onClick={(e) => {
+                    e.stopPropagation();
                     if (overlaps.isOverlapping) {
-                      e.stopPropagation();
-                      setTooltipData({ top: top + height / 2, isLeft: true, name: plan.name, emoji: plan.emoji, timeRange: plan.timeType === 'range' ? `${plan.startTime} - ${plan.endTime}` : plan.startTime, duration: plan.timeType === 'range' ? formatDuration(startMins, endMins) : '时间点' });
-                    } else onEditPlan(plan);
+                      setActivePlanClusters(prev => ({ ...prev, [overlaps.clusterId]: plan.id }));
+                    }
                   }}
                 />
 
                 {/* 文字区和按钮（非重叠时显示） */}
-                {!overlaps.isOverlapping && (
-                  <div className="absolute h-full flex flex-col justify-center items-end pr-2.5 min-w-0 cursor-pointer group hover:bg-black/[0.03] rounded-l-xl transition-colors"
-                    style={{ left: 0, width: 'calc(50% - 40px)' }}
+                {isActivePlan && (
+                  <div className="absolute flex flex-col justify-center items-end pr-2.5 py-2 min-w-0 cursor-pointer group hover:bg-black/[0.03] rounded-l-2xl transition-colors pointer-events-auto"
+                    style={{ left: 0, width: 'calc(50% - 60px)', top: '50%', transform: 'translateY(-50%)' }}
                     onClick={() => onEditPlan(plan)}>
                     <div className="flex items-center gap-1.5 justify-end w-full">
                       <span className="text-[11px] font-medium text-[#9CA3AF] leading-none">{plan.startTime}</span>
@@ -192,10 +185,15 @@ export default function TimelineView({ plans, actuals, totalHeight, getOffsetY, 
             const startMins = timeToMins(act.actualStart);
             const endMins = timeToMins(act.actualEnd);
             const top = getOffsetY(startMins, getStartRole(act));
-            const height = Math.max(getOffsetY(endMins, getEndRole(act)) - top, 40);
-            const overlaps = actualOverlaps[act.id];
-
             const connectedPlan = act.fromPlanId ? plans.find(p => p.id === act.fromPlanId) : null;
+            const isPointActual = connectedPlan?.timeType === 'point' && act.actualStart === act.actualEnd;
+            const height = isPointActual ? 48 : Math.max(getOffsetY(endMins, getEndRole(act)) - top, 64);
+            const overlaps = actualOverlaps[act.id];
+            const isActiveActual = !overlaps.isOverlapping || 
+             (activeActualClusters[overlaps.clusterId] 
+               ? activeActualClusters[overlaps.clusterId] === act.id 
+               : overlaps.columnIndex === 0);
+
             const hideStart = connectedPlan && connectedPlan.startTime === act.actualStart;
             const hideEnd = connectedPlan && connectedPlan.timeType === 'range' && connectedPlan.endTime === act.actualEnd;
 
@@ -208,27 +206,28 @@ export default function TimelineView({ plans, actuals, totalHeight, getOffsetY, 
             }
 
             return (
-              <div key={`act-${act.id}`} className="absolute" style={{ top, height, left: 0, right: 0 }}>
+              <div key={`act-${act.id}`} className="absolute pointer-events-none" style={{ top, height, left: 0, right: 0 }}>
 
                 {/* 深色块 */}
-                <div className="absolute rounded-xl border-[1.5px] border-white shadow-sm cursor-pointer hover:brightness-105 transition-all z-10"
+                <div className="absolute border-[1.5px] border-white shadow-sm cursor-pointer hover:brightness-105 transition-all z-10 pointer-events-auto"
                   style={{
-                    left: overlaps.isOverlapping ? (overlaps.columnIndex === 0 ? 'calc(50% + 4px)' : 'calc(50% + 20px)') : 'calc(50% + 4px)',
-                    width: overlaps.isOverlapping ? '16px' : '32px',
-                    top: 0, height: '100%', backgroundColor: act.color
+                    left: overlaps.isOverlapping ? (overlaps.columnIndex === 0 ? 'calc(50% + 4px)' : 'calc(50% + 28px)') : 'calc(50% + 4px)',
+                    width: overlaps.isOverlapping ? '28px' : '48px',
+                    top: 0, height: '100%', backgroundColor: act.color,
+                    borderRadius: isPointActual ? '24px' : '16px'
                   }}
                   onClick={(e) => {
+                    e.stopPropagation();
                     if (overlaps.isOverlapping) {
-                      e.stopPropagation();
-                      setTooltipData({ top: top + height / 2, isLeft: false, name: act.name, emoji: act.emoji, timeRange: `${act.actualStart} - ${act.actualEnd}`, duration: formatDuration(startMins, endMins) });
-                    } else onEditActual(act);
+                      setActiveActualClusters(prev => ({ ...prev, [overlaps.clusterId]: act.id }));
+                    }
                   }}
                 />
 
                 {/* 实际文字区（非重叠时显示） */}
-                {!overlaps.isOverlapping && (
-                  <div className="absolute h-full flex flex-col justify-center items-start pl-2.5 min-w-0 cursor-pointer group hover:bg-black/[0.03] rounded-r-xl transition-colors"
-                    style={{ left: 'calc(50% + 40px)', width: 'calc(50% - 40px)' }}
+                {isActiveActual && (
+                  <div className="absolute flex flex-col justify-center items-start pl-2.5 py-2 min-w-0 cursor-pointer group hover:bg-black/[0.03] rounded-r-2xl transition-colors pointer-events-auto"
+                    style={{ left: 'calc(50% + 60px)', width: 'calc(50% - 60px)', top: '50%', transform: 'translateY(-50%)' }}
                     onClick={() => onEditActual(act)}>
                     <div className="flex items-center gap-1.5 justify-start w-full">
                       <span className="text-[11px] font-medium text-[#9CA3AF] leading-none">{hideStart ? '' : act.actualStart}</span>
