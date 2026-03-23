@@ -35,3 +35,5 @@ export const TASK_COLORS = COLOR_PRESETS.flatMap(p => p.colors);
 // --- 💾 存储键名 ---
 export const STORAGE_KEY_PLANS = 'pvr_plans';
 export const STORAGE_KEY_ACTUALS = 'pvr_actuals';
+export const STORAGE_KEY_GROUPS = 'pvr_groups'; 
+export const STORAGE_KEY_REPEAT_RULES = 'pvr_repeat_rules';

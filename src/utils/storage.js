@@ -31,3 +31,11 @@ export const getInitialActuals = () => {
     { id: 'a2', date: TODAY, name: '午后散步', emoji: '🏃‍♂️', actualStart: '14:00', actualEnd: '14:30', fromPlanId: null, color: '#88d8db', source: 'manual' },
   ];
 };
+
+export const getInitialGroups = () => [
+  { id: 'g1', name: '工作', emoji: '💼', color: '#71b7ed', sortOrder: 0 },
+  { id: 'g2', name: '生活', emoji: '🏠', color: '#84c3b7', sortOrder: 1 },
+  { id: 'g3', name: '学习', emoji: '📚', color: '#b8aeeb', sortOrder: 2 },
+];
+
+export const getInitialRepeatRules = () => [];

@@ -2,9 +2,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Clock, Play, StopCircle, ChevronLeft, ChevronRight, BarChart2, List, FolderOpen } from 'lucide-react';
 
 // Utils
-import { TASK_COLORS, STORAGE_KEY_PLANS, STORAGE_KEY_ACTUALS, STORAGE_KEY_GROUPS, STORAGE_KEY_REPEAT_RULES } from './utils/constants';
+import { TASK_COLORS, STORAGE_KEY_PLANS, STORAGE_KEY_ACTUALS, STORAGE_KEY_GROUPS } from './utils/constants';
 import { timeToMins, minsToTime, formatMins, formatDate, getDisplayDate, addDays } from './utils/helpers';
-import { loadData, saveData, getInitialPlans, getInitialActuals, getInitialGroups, getInitialRepeatRules } from './utils/storage';
+import { loadData, saveData, getInitialPlans, getInitialActuals, getInitialGroups } from './utils/storage'; 
 
 // Components
 import TimelineView from './components/TimelineView';
@@ -20,82 +20,13 @@ export default function App() {
   const TODAY = formatDate(new Date());
   const [currentDate, setCurrentDate] = useState(TODAY);
   const [activeTab, setActiveTab] = useState('timeline');
-  
   const [plans, setPlans] = useState(() => loadData(STORAGE_KEY_PLANS, getInitialPlans()));
   const [actuals, setActuals] = useState(() => loadData(STORAGE_KEY_ACTUALS, getInitialActuals()));
   const [groups, setGroups] = useState(() => loadData(STORAGE_KEY_GROUPS, getInitialGroups()));
-  const [repeatRules, setRepeatRules] = useState(() => loadData(STORAGE_KEY_REPEAT_RULES, getInitialRepeatRules()));
 
   useEffect(() => { saveData(STORAGE_KEY_PLANS, plans); }, [plans]);
   useEffect(() => { saveData(STORAGE_KEY_ACTUALS, actuals); }, [actuals]);
   useEffect(() => { saveData(STORAGE_KEY_GROUPS, groups); }, [groups]);
-  useEffect(() => { saveData(STORAGE_KEY_REPEAT_RULES, repeatRules); }, [repeatRules]);
-
-  // --- 🔄 重复任务实例生成器 ---
-  useEffect(() => {
-    if (repeatRules.length === 0) return;
-
-    let newPlans = [...plans];
-    let changed = false;
-
-    repeatRules.filter(rule => rule.active).forEach(rule => {
-      const existingFuture = newPlans.filter(
-        p => p.repeatGroupId === rule.id && !p.completed && p.date >= formatDate(new Date())
-      );
-
-      const needed = 3 - existingFuture.length;
-      if (needed <= 0) return;
-
-      const allInstances = newPlans.filter(p => p.repeatGroupId === rule.id);
-      const lastDate = allInstances.length > 0
-        ? allInstances.sort((a, b) => b.date.localeCompare(a.date))[0].date
-        : formatDate(new Date());
-
-      let generated = 0;
-      let checkDate = addDays(lastDate, 1); 
-      const maxLookahead = 365; 
-      let lookahead = 0;
-
-      while (generated < needed && lookahead < maxLookahead) {
-        const dateObj = new Date(checkDate);
-        const dayOfWeek = dateObj.getDay(); 
-
-        let shouldGenerate = false;
-        if (rule.repeatType === 'interval') {
-          const daysSinceCreation = Math.round((dateObj - new Date(rule.createdAt)) / 86400000);
-          shouldGenerate = daysSinceCreation > 0 && daysSinceCreation % rule.interval === 0;
-        } else if (rule.repeatType === 'weekdays') {
-          shouldGenerate = rule.weekdays.includes(dayOfWeek);
-        }
-
-        if (shouldGenerate) {
-          const alreadyExists = newPlans.some(p => p.repeatGroupId === rule.id && p.date === checkDate);
-          if (!alreadyExists) {
-            newPlans.push({
-              id: `p_${Date.now()}_${rule.id}_${generated}`,
-              date: checkDate,
-              name: rule.name,
-              emoji: rule.emoji,
-              color: rule.color,
-              groupId: rule.groupId,
-              timeType: rule.sameTime ? rule.timeType : 'none',
-              startTime: rule.sameTime ? rule.startTime : null,
-              endTime: rule.sameTime ? rule.endTime : null,
-              completed: false,
-              repeatGroupId: rule.id,
-            });
-            generated++;
-            changed = true;
-          }
-        }
-
-        checkDate = addDays(checkDate, 1);
-        lookahead++;
-      }
-    });
-
-    if (changed) setPlans(newPlans);
-  }, [repeatRules]); 
 
   const currentPlans = useMemo(() => plans.filter(p => p.date === currentDate), [plans, currentDate]);
   const currentActuals = useMemo(() => actuals.filter(a => a.date === currentDate), [actuals, currentDate]);
@@ -107,47 +38,34 @@ export default function App() {
   const [isTimerModalOpen, setIsTimerModalOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
-  
   const [editingPlan, setEditingPlan] = useState(null);
   const [editingActual, setEditingActual] = useState(null);
   const [editingGroup, setEditingGroup] = useState(null);
   const [prefillTime, setPrefillTime] = useState(null);
-  const [prefillGroupId, setPrefillGroupId] = useState(null); 
 
-  const handleCreatePlanInGroup = (groupId) => { 
-    setPrefillGroupId(groupId);
-    setEditingPlan(null);
-    setIsPlanModalOpen(true);
-  };
-  
   const handleSaveGroup = (data) => {
     if (editingGroup) {
       setGroups(groups.map(g => g.id === editingGroup.id ? { ...g, ...data } : g));
       setIsGroupModalOpen(false);
       setEditingGroup(null);
-      return editingGroup.id;
+      return editingGroup.id; // 新增返回 ID
     } else {
       const newId = `g_${Date.now()}`;
       setGroups([...groups, { ...data, id: newId, sortOrder: groups.length }]);
       setIsGroupModalOpen(false);
       setEditingGroup(null);
-      return newId;
+      return newId; // 新增返回 ID
     }
   };
 
   const handleDeleteGroup = (id) => {
     if (window.confirm('删除此分组？下属任务不会被删除，只是取消归组。')) {
       setGroups(groups.filter(g => g.id !== id));
+      // 清除所有 plan 上对该 group 的引用
       setPlans(plans.map(p => p.groupId === id ? { ...p, groupId: null } : p));
       setIsGroupModalOpen(false);
       setEditingGroup(null);
     }
-  };
-
-  const handleSaveRepeatRule = (ruleData) => {
-    const newRule = { ...ruleData, id: `rr_${Date.now()}`, createdAt: formatDate(new Date()), active: true };
-    setRepeatRules(prev => [...prev, newRule]);
-    return newRule.id;
   };
 
   const handleCreatePlanAtTime = (time) => {
@@ -162,10 +80,12 @@ export default function App() {
     return () => clearInterval(interval);
   }, [activeTimer]);
 
+  // --- 🧠 时间轴布局引擎 ---
   const { getOffsetY, totalHeight } = useMemo(() => {
     const PX_PER_MIN = 80 / 60;
     const GAP_HEIGHT = 48;
 
+    // 1. 收集所有事件，赋予点任务虚拟的 1 分钟结束时间以计算布局
     const events = [];
     currentPlans.filter(p => p.timeType !== 'none').forEach(p => {
       const start = timeToMins(p.startTime);
@@ -184,6 +104,7 @@ export default function App() {
 
     events.sort((a, b) => a.start - b.start);
 
+    // 2. 合并 10 分钟内相邻的事件形成活跃区间
     const activeIntervals = [];
     events.forEach(ev => {
       if (activeIntervals.length === 0) activeIntervals.push({ start: ev.start, end: ev.end, events: [ev] });
@@ -198,6 +119,7 @@ export default function App() {
       }
     });
 
+    // 3. 基于有向无环图 (DAG) 计算每个关键时间点的精确 Y 坐标
     const timeToY = new Map();
     let currentBaseY = 0;
 
@@ -207,11 +129,12 @@ export default function App() {
       const timesSet = new Set();
       interval.events.forEach(ev => { timesSet.add(ev.start); timesSet.add(ev.end); });
       const times = Array.from(timesSet).sort((a, b) => a - b);
-      interval.times = times;
+      interval.times = times; // 缓存供后续插值使用
 
       const yMap = new Map();
       yMap.set(times[0], currentBaseY);
 
+      // 逐步推演 Y 坐标，强制应用最小高度约束
       for (let i = 1; i < times.length; i++) {
         const t = times[i];
         const tPrev = times[i - 1];
@@ -222,7 +145,7 @@ export default function App() {
             const minHeight = ev.type === 'point' ? 48 : 64;
             const evStartY = yMap.get(ev.start);
             if (evStartY !== undefined) {
-              y = Math.max(y, evStartY + minHeight);
+              y = Math.max(y, evStartY + minHeight); // 如果高度不够，强行推移 Y 坐标
             }
           }
         });
@@ -233,6 +156,7 @@ export default function App() {
       currentBaseY = yMap.get(times[times.length - 1]);
     });
 
+    // 4. 返回查表与插值函数
     const getOffsetY = (mins, role = 'exact') => {
       let y = 0;
       let lastEnd = null;
@@ -250,6 +174,7 @@ export default function App() {
           if (timeToY.has(mins)) {
             return timeToY.get(mins);
           } else {
+            // 区间内插值计算
             const times = interval.times;
             let t0 = times[0], t1 = times[times.length - 1];
             for (let j = 0; j < times.length - 1; j++) {
@@ -276,29 +201,9 @@ export default function App() {
     return { getOffsetY, totalHeight: activeIntervals.length > 0 ? getOffsetY(maxTime) + 40 : 0 };
   }, [currentPlans, currentActuals]);
 
+  // --- 操作回调 ---
   const handleToggleComplete = (id) => setPlans(plans.map(p => p.id === id ? { ...p, completed: !p.completed } : p));
-  
-  // 👈 补丁修改：更新了 deletePlan 函数
-  const deletePlan = (id, deleteAllRepeat = false) => {
-    const plan = plans.find(p => p.id === id);
-    if (deleteAllRepeat && plan?.repeatGroupId) {
-      if (window.confirm('确定删除该重复任务的所有未来实例？已有执行记录的会保留。')) {
-        const ruleId = plan.repeatGroupId;
-        setRepeatRules(repeatRules.filter(r => r.id !== ruleId));
-        const hasRecord = (planId) => actuals.some(a => a.fromPlanId === planId);
-        setPlans(plans.filter(p =>
-          p.repeatGroupId !== ruleId || p.completed || p.date < formatDate(new Date()) || hasRecord(p.id)
-        ));
-        setIsPlanModalOpen(false);
-      }
-    } else {
-      if (window.confirm('确定删除此计划吗？')) {
-        setPlans(plans.filter(p => p.id !== id));
-        setIsPlanModalOpen(false);
-      }
-    }
-  };
-
+  const deletePlan = (id) => { if (window.confirm('确定删除此计划吗？')) { setPlans(plans.filter(p => p.id !== id)); setIsPlanModalOpen(false); } };
   const deleteActual = (id) => { if (window.confirm('确定删除此执行记录吗？')) { setActuals(actuals.filter(a => a.id !== id)); setIsActualModalOpen(false); } };
 
   const startTimerFromPlan = (plan) => {
@@ -311,14 +216,22 @@ export default function App() {
     if (!activeTimer) return;
     const endDate = new Date();
     const startDate = new Date(activeTimer.startTimestamp);
+    
+    // 计算已计时的分钟数
     const elapsedMins = (endDate.getTime() - startDate.getTime()) / 60000;
 
+    // 5分钟保护逻辑
     if (elapsedMins < 5) {
       const confirmStop = window.confirm('本次计时不足 5 分钟，如果现在停止记录将不会保留，确定要停止吗？');
-      if (confirmStop) { setActiveTimer(null); }
+      if (confirmStop) {
+        // 用户确认停止：清空定时器，但不保存记录
+        setActiveTimer(null);
+      }
+      // 如果用户取消，直接 return，计时器继续运行
       return; 
     }
 
+    // 超过 5 分钟，正常保存记录
     const newActual = {
       id: `a_${Date.now()}`, date: formatDate(endDate), name: activeTimer.name, emoji: activeTimer.emoji,
       actualStart: `${startDate.getHours().toString().padStart(2, '0')}:${startDate.getMinutes().toString().padStart(2, '0')}`,
@@ -333,6 +246,8 @@ export default function App() {
     <div className="min-h-screen bg-[#FAFAFA] text-[#1F2937] font-sans pb-28 selection:bg-gray-200 flex justify-center">
       <div className="w-full max-w-md bg-[#FAFAFA] min-h-screen relative shadow-sm overflow-hidden flex flex-col">
         <header className="px-5 pt-10 pb-3 sticky top-0 bg-[#FAFAFA]/95 backdrop-blur z-50">
+          
+          {/* 这里是你原本的顶部操作栏：日期切换 + 右侧三个按钮。全部保留！ */}
           <div className="flex justify-between items-center mb-4">
             <div className="flex items-center gap-1.5 bg-white shadow-sm px-3 py-1.5 rounded-full border border-gray-100">
               <button onClick={() => setCurrentDate(addDays(currentDate, -1))} className="p-1 hover:bg-gray-100 rounded-full text-gray-500"><ChevronLeft size={18} /></button>
@@ -345,21 +260,34 @@ export default function App() {
               <button onClick={() => { setEditingActual(null); setIsActualModalOpen(true); }} className="p-2 rounded-full bg-white shadow-sm text-[#1F2937] active:scale-95 transition-transform"><Clock size={18} /></button>
             </div>
           </div>
+
+          {/* 这是修改后的选项卡区域：变成了 3 个 tab */}
           <div className="flex bg-gray-100/80 p-1 rounded-xl">
-            <button onClick={() => setActiveTab('list')} className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'list' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}><FolderOpen size={16} /> 清单</button>
-            <button onClick={() => setActiveTab('timeline')} className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'timeline' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}><List size={16} /> 时间轴</button>
-            <button onClick={() => setActiveTab('stats')} className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'stats' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}><BarChart2 size={16} /> 统计</button>
+            <button onClick={() => setActiveTab('list')} className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'list' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+              <FolderOpen size={16} /> 清单
+            </button>
+            <button onClick={() => setActiveTab('timeline')} className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'timeline' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+              <List size={16} /> 时间轴
+            </button>
+            <button onClick={() => setActiveTab('stats')} className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'stats' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+              <BarChart2 size={16} /> 统计
+            </button>
           </div>
         </header>
 
         <main className="flex-1 px-4 mt-2 relative overflow-x-hidden">
+          {/* 修改后的 main 区域渲染：根据 activeTab 渲染不同的视图 */}
           {activeTab === 'list' ? (
-            <ListView plans={plans} actuals={actuals} groups={groups} currentDate={currentDate}
+            <ListView
+              plans={plans}
+              actuals={actuals}
+              groups={groups}
+              currentDate={currentDate}
               onEditPlan={(p) => { setEditingPlan(p); setIsPlanModalOpen(true); }}
               onEditGroup={(g) => { setEditingGroup(g); setIsGroupModalOpen(true); }}
               onCreateGroup={() => { setEditingGroup(null); setIsGroupModalOpen(true); }}
               onToggleComplete={handleToggleComplete}
-              onCreatePlanInGroup={handleCreatePlanInGroup} />
+            />
           ) : activeTab === 'timeline' ? (
             <TimelineView plans={currentPlans} actuals={currentActuals} totalHeight={totalHeight} getOffsetY={getOffsetY} activeTimer={activeTimer}
               onEditPlan={(p) => { setEditingPlan(p); setIsPlanModalOpen(true); }}
@@ -372,6 +300,7 @@ export default function App() {
         </main>
       </div>
 
+      {/* ----------- 计时器浮动条保持不变 ----------- */}
       {activeTimer && (
         <div className="fixed bottom-6 w-[90%] max-w-sm bg-[#1F2937] text-white rounded-2xl px-5 py-4 flex items-center justify-between shadow-2xl z-50">
           <div className="flex items-center gap-4">
@@ -390,39 +319,25 @@ export default function App() {
         </div>
       )}
 
-      {/* 弹窗区域 */}
+      {/* ----------- 原有弹窗保持不变 ----------- */}
       {isPlanModalOpen && (
         <PlanModal isOpen 
-          onClose={() => { setIsPlanModalOpen(false); setPrefillTime(null); setPrefillGroupId(null); }}
+          onClose={() => { setIsPlanModalOpen(false); setPrefillTime(null); }}
           initialData={editingPlan}
           prefillStartTime={!editingPlan ? prefillTime : null}
-          prefillGroupId={!editingPlan ? prefillGroupId : null} 
-          plans={plans} currentDate={currentDate} groups={groups}
+          plans={plans} currentDate={currentDate}
+          groups={groups}
           onCreateGroup={handleSaveGroup}
-          onSaveRepeatRule={handleSaveRepeatRule} 
-          onSave={(data, batchUpdate = false) => {
-            if (editingPlan) {
-              if (batchUpdate && editingPlan.repeatGroupId) {
-                setPlans(plans.map(p =>
-                  (p.repeatGroupId === editingPlan.repeatGroupId && p.date >= currentDate && !p.completed)
-                  ? { ...p, ...data, id: p.id, date: p.date, repeatGroupId: p.repeatGroupId }
-                  : p
-                ));
-              } else {
-                setPlans(plans.map(p => p.id === editingPlan.id ? { ...p, ...data } : p));
-              }
-            } else {
-              setPlans([...plans, { ...data, id: `p_${Date.now()}`, date: currentDate, completed: false }]);
-            }
+          onSave={(data) => {
+            if (editingPlan) setPlans(plans.map(p => p.id === editingPlan.id ? { ...p, ...data } : p));
+            else setPlans([...plans, { ...data, id: `p_${Date.now()}`, date: currentDate, completed: false }]);
             setIsPlanModalOpen(false);
             setPrefillTime(null);
-            setPrefillGroupId(null);
-          }} 
-          /* 👈 补丁修改：更新了 onDelete 传参 */
-          onDelete={(deleteAll) => deletePlan(editingPlan?.id, deleteAll)} />
+          }} onDelete={() => deletePlan(editingPlan?.id)} />
       )}
       {isActualModalOpen && (
-        <ActualModal isOpen onClose={() => setIsActualModalOpen(false)} initialData={editingActual} plans={currentPlans} actuals={actuals} currentDate={currentDate}
+        <ActualModal isOpen onClose={() => setIsActualModalOpen(false)} initialData={editingActual} plans={currentPlans}
+          actuals={actuals} currentDate={currentDate}
           onSave={(data) => {
             if (editingActual) setActuals(actuals.map(a => a.id === editingActual.id ? { ...a, ...data } : a));
             else setActuals([...actuals, { ...data, id: `a_${Date.now()}`, date: currentDate, source: 'manual' }]);
@@ -436,8 +351,16 @@ export default function App() {
       {isCalendarOpen && (
         <CalendarModal currentDate={currentDate} onClose={() => setIsCalendarOpen(false)} onSelect={(d) => { setCurrentDate(d); setIsCalendarOpen(false); }} />
       )}
+      
+      {/* ----------- 3f. 新增：GroupModal 弹窗 ----------- */}
       {isGroupModalOpen && (
-        <GroupModal isOpen onClose={() => { setIsGroupModalOpen(false); setEditingGroup(null); }} initialData={editingGroup} onSave={handleSaveGroup} onDelete={() => handleDeleteGroup(editingGroup?.id)} />
+        <GroupModal
+          isOpen={isGroupModalOpen}
+          onClose={() => { setIsGroupModalOpen(false); setEditingGroup(null); }}
+          initialData={editingGroup}
+          onSave={handleSaveGroup}
+          onDelete={() => handleDeleteGroup(editingGroup?.id)}
+        />
       )}
     </div>
   );
