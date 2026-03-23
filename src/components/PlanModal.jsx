@@ -98,7 +98,6 @@ export default function PlanModal({ isOpen, onClose, initialData, onSave, onDele
                   </div>
                 )}
                 <div>
-                <div>
                   <div className="flex items-center justify-between mb-2 ml-1">
                     <label className="block text-xs text-gray-400">专属色</label>
                     <div className="flex gap-1 bg-gray-100 p-0.5 rounded-lg">
@@ -190,7 +189,17 @@ export default function PlanModal({ isOpen, onClose, initialData, onSave, onDele
                     </div>
                   )}
                 </div>
+                <div className="flex gap-3 pt-4">
+                  {initialData && (
+                    <button type="button" onClick={onDelete} className="px-5 py-4 bg-red-50 text-red-500 rounded-2xl font-bold">
+                      <Trash2 size={20} />
+                    </button>
+                  )}
+                  <button type="button" onClick={handleSubmit} className="flex-1 bg-[#1F2937] text-white rounded-2xl py-4 font-bold text-lg shadow-lg active:scale-[0.98]">
+                    {initialData ? '保存修改' : '创建计划'}
+                  </button>
                 </div>
+              
               </div>
             </>
           )}

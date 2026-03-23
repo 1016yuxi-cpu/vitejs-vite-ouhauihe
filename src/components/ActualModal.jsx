@@ -196,6 +196,16 @@ export default function ActualModal({ isOpen, onClose, initialData, plans, actua
                     )}
                   </div>
                 )}
+                <div className="flex gap-3 pt-4">
+                  {initialData && (
+                    <button type="button" onClick={onDelete} className="px-5 py-4 bg-red-50 text-red-500 rounded-2xl font-bold">
+                      <Trash2 size={20} />
+                    </button>
+                  )}
+                  <button type="button" onClick={handleSubmit} className="flex-1 bg-green-600 text-white rounded-2xl py-4 font-bold text-lg shadow-lg shadow-green-600/20 active:scale-[0.98]">
+                    {initialData ? '保存修改' : '记录执行'}
+                  </button>
+                </div>
               </div>
             </>
           )}

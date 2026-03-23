@@ -6,6 +6,19 @@ import { timeToMins, formatMins, formatDuration, isOverlap } from '../utils/help
 export default function TimelineView({ plans, actuals, totalHeight, getOffsetY, activeTimer, onEditPlan, onEditActual, onToggleComplete, onStartTimer }) {
   const [activePlanClusters, setActivePlanClusters] = useState({});
   const [activeActualClusters, setActiveActualClusters] = useState({});
+  const planActualSummary = useMemo(() => {
+    const summary = {};
+    actuals.forEach(a => {
+      if (!a.fromPlanId || a.fromPlanId === 'none') return;
+      const dur = timeToMins(a.actualEnd) - timeToMins(a.actualStart);
+      if (!summary[a.fromPlanId]) {
+        summary[a.fromPlanId] = { totalDur: 0, lastActualId: a.id };
+      }
+      summary[a.fromPlanId].totalDur += dur;
+      summary[a.fromPlanId].lastActualId = a.id; // 遍历到最后，保留的自然是最后一条
+    });
+    return summary;
+  }, [actuals]);
 
   const timedPlans = plans.filter(p => p.timeType !== 'none');
   const untimedPlans = plans.filter(p => p.timeType === 'none');
@@ -64,20 +77,6 @@ export default function TimelineView({ plans, actuals, totalHeight, getOffsetY, 
 
   const planOverlaps = calculateOverlaps(timedPlans, true);
   const actualOverlaps = calculateOverlaps(actuals, false);
-
-  const planActualSummary = useMemo(() => {
-    const summary = {};
-    actuals.forEach(a => {
-      if (!a.fromPlanId || a.fromPlanId === 'none') return;
-      const dur = timeToMins(a.actualEnd) - timeToMins(a.actualStart);
-      if (!summary[a.fromPlanId]) {
-        summary[a.fromPlanId] = { totalDur: 0, lastActualId: a.id };
-      }
-      summary[a.fromPlanId].totalDur += dur;
-      summary[a.fromPlanId].lastActualId = a.id; // 遍历到最后，保留的自然是最后一条
-    });
-    return summary;
-  }, [actuals]);
 
   const getFillPercent = (plan) => {
     const summary = planActualSummary[plan.id];
@@ -253,7 +252,7 @@ export default function TimelineView({ plans, actuals, totalHeight, getOffsetY, 
             const isActiveActual = !overlaps.isOverlapping || 
               (activeActualClusters[overlaps.clusterId] 
                ? activeActualClusters[overlaps.clusterId] === act.id 
-               : overlaps.columnIndex === overlaps.maxColumns - 1);
+               : overlaps.columnIndex === 0);
 
             const hideStart = connectedPlan && connectedPlan.startTime === act.actualStart;
             const hideEnd = connectedPlan && connectedPlan.timeType === 'range' && connectedPlan.endTime === act.actualEnd;
