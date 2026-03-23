@@ -35,6 +35,12 @@ export default function App() {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
   const [editingActual, setEditingActual] = useState(null);
+  const [prefillTime, setPrefillTime] = useState(null);
+  const handleCreatePlanAtTime = (time) => {
+    setPrefillTime(time);
+    setEditingPlan(null);
+    setIsPlanModalOpen(true);
+  };
 
   useEffect(() => {
     let interval;
@@ -231,7 +237,8 @@ export default function App() {
             <TimelineView plans={currentPlans} actuals={currentActuals} totalHeight={totalHeight} getOffsetY={getOffsetY} activeTimer={activeTimer}
               onEditPlan={(p) => { setEditingPlan(p); setIsPlanModalOpen(true); }}
               onEditActual={(a) => { setEditingActual(a); setIsActualModalOpen(true); }}
-              onToggleComplete={handleToggleComplete} onStartTimer={startTimerFromPlan} />
+              onToggleComplete={handleToggleComplete} onStartTimer={startTimerFromPlan}
+              onCreatePlanAtTime={handleCreatePlanAtTime} />
           ) : (
             <StatsView actuals={actuals} currentDate={currentDate} />
           )}
@@ -259,12 +266,16 @@ export default function App() {
 
       {/* 弹窗 */}
       {isPlanModalOpen && (
-        <PlanModal isOpen onClose={() => setIsPlanModalOpen(false)} initialData={editingPlan}
+        <PlanModal isOpen 
+          onClose={() => { setIsPlanModalOpen(false); setPrefillTime(null); }} // 👈 修改：关闭时清空
+          initialData={editingPlan}
+          prefillStartTime={!editingPlan ? prefillTime : null} // 👈 新增：传入预填时间
           plans={plans} currentDate={currentDate}
           onSave={(data) => {
             if (editingPlan) setPlans(plans.map(p => p.id === editingPlan.id ? { ...p, ...data } : p));
             else setPlans([...plans, { ...data, id: `p_${Date.now()}`, date: currentDate, completed: false }]);
             setIsPlanModalOpen(false);
+            setPrefillTime(null); // 👈 修改：保存后清空
           }} onDelete={() => deletePlan(editingPlan?.id)} />
       )}
       {isActualModalOpen && (

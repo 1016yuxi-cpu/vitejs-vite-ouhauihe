@@ -5,12 +5,12 @@ import { timeToMins, isOverlap } from '../utils/helpers';
 import WheelTimePicker from './WheelTimePicker';
 import TimeTrigger from './TimeTrigger';
 
-export default function PlanModal({ isOpen, onClose, initialData, onSave, onDelete, plans, currentDate }) {
+export default function PlanModal({ isOpen, onClose, initialData, onSave, onDelete, plans, currentDate, prefillStartTime }) {
   const [name, setName] = useState(initialData?.name || '');
   const [emoji, setEmoji] = useState(initialData?.emoji || '📝');
   const [timeType, setTimeType] = useState(initialData?.timeType || 'range');
-  const [startTime, setStartTime] = useState(initialData?.startTime || '09:00');
-  const [endTime, setEndTime] = useState(initialData?.endTime || '10:00');
+  const [startTime, setStartTime] = useState(initialData?.startTime || prefillStartTime || '09:00');
+  const [endTime, setEndTime] = useState(initialData?.endTime || prefillStartTime || '10:00');
   const initialColor = initialData?.color || COLOR_PRESETS[0].colors[0].hex;
   const foundPresetIndex = COLOR_PRESETS.findIndex(p => p.colors.some(c => c.hex === initialColor));
   const initialPresetIndex = foundPresetIndex !== -1 ? foundPresetIndex : COLOR_PRESETS.length;
