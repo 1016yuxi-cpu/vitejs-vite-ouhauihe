@@ -204,8 +204,6 @@ export default function App() {
     setActiveTimer(null);
   };
 
-  const usedColors = useMemo(() => new Set([...currentPlans.map(p => p.color), ...currentActuals.map(a => a.color)]), [currentPlans, currentActuals]);
-
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-[#1F2937] font-sans pb-28 selection:bg-gray-200 flex justify-center">
       <div className="w-full max-w-md bg-[#FAFAFA] min-h-screen relative shadow-sm overflow-hidden flex flex-col">
@@ -261,7 +259,7 @@ export default function App() {
 
       {/* 弹窗 */}
       {isPlanModalOpen && (
-        <PlanModal isOpen onClose={() => setIsPlanModalOpen(false)} initialData={editingPlan} usedColors={usedColors}
+        <PlanModal isOpen onClose={() => setIsPlanModalOpen(false)} initialData={editingPlan}
           plans={plans} currentDate={currentDate}
           onSave={(data) => {
             if (editingPlan) setPlans(plans.map(p => p.id === editingPlan.id ? { ...p, ...data } : p));
@@ -270,7 +268,7 @@ export default function App() {
           }} onDelete={() => deletePlan(editingPlan?.id)} />
       )}
       {isActualModalOpen && (
-        <ActualModal isOpen onClose={() => setIsActualModalOpen(false)} initialData={editingActual} plans={currentPlans} usedColors={usedColors}
+        <ActualModal isOpen onClose={() => setIsActualModalOpen(false)} initialData={editingActual} plans={currentPlans}
           actuals={actuals} currentDate={currentDate}
           onSave={(data) => {
             if (editingActual) setActuals(actuals.map(a => a.id === editingActual.id ? { ...a, ...data } : a));
@@ -279,7 +277,7 @@ export default function App() {
           }} onDelete={() => deleteActual(editingActual?.id)} />
       )}
       {isTimerModalOpen && (
-        <TimerStartModal isOpen onClose={() => setIsTimerModalOpen(false)} usedColors={usedColors}
+        <TimerStartModal isOpen onClose={() => setIsTimerModalOpen(false)}
           onStart={(data) => { setActiveTimer({ ...data, planId: null, startTimestamp: Date.now() }); setCurrentTime(Date.now()); setIsTimerModalOpen(false); }} />
       )}
       {isCalendarOpen && (

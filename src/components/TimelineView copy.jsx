@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { CheckCircle, Circle, Play, Check } from 'lucide-react';
 import { TASK_COLORS } from '../utils/constants';
 import { timeToMins, formatMins, formatDuration, isOverlap } from '../utils/helpers';
@@ -65,30 +65,21 @@ export default function TimelineView({ plans, actuals, totalHeight, getOffsetY, 
   const planOverlaps = calculateOverlaps(timedPlans, true);
   const actualOverlaps = calculateOverlaps(actuals, false);
 
-  const planActualSummary = useMemo(() => {
-    const summary = {};
-    actuals.forEach(a => {
-      if (!a.fromPlanId || a.fromPlanId === 'none') return;
-      const dur = timeToMins(a.actualEnd) - timeToMins(a.actualStart);
-      if (!summary[a.fromPlanId]) {
-        summary[a.fromPlanId] = { totalDur: 0, lastActualId: a.id };
-      }
-      summary[a.fromPlanId].totalDur += dur;
-      summary[a.fromPlanId].lastActualId = a.id; // 遍历到最后，保留的自然是最后一条
-    });
-    return summary;
-  }, [actuals]);
-
   const getFillPercent = (plan) => {
-    const summary = planActualSummary[plan.id];
     if (plan.timeType === 'point') {
-      return summary ? 100 : 0;
+      // 时间点任务：有关联 actual 就填满
+      const hasActual = actuals.some(a => a.fromPlanId === plan.id);
+      return hasActual ? 100 : 0;
     }
     if (plan.timeType === 'range') {
       const plannedDur = timeToMins(plan.endTime) - timeToMins(plan.startTime);
       if (plannedDur <= 0) return 0;
       
-      const totalActualDur = summary ? summary.totalDur : 0;
+      // 累加所有关联 actual 的时长
+      const totalActualDur = actuals
+        .filter(a => a.fromPlanId === plan.id)
+        .reduce((sum, a) => sum + (timeToMins(a.actualEnd) - timeToMins(a.actualStart)), 0);
+        
       return Math.min(100, Math.round((totalActualDur / plannedDur) * 100));
     }
     return 0;
@@ -251,9 +242,9 @@ export default function TimelineView({ plans, actuals, totalHeight, getOffsetY, 
             const height = isPointActual ? 48 : Math.max(getOffsetY(endMins, getEndRole(act)) - top, 64);
             const overlaps = actualOverlaps[act.id];
             const isActiveActual = !overlaps.isOverlapping || 
-              (activeActualClusters[overlaps.clusterId] 
+             (activeActualClusters[overlaps.clusterId] 
                ? activeActualClusters[overlaps.clusterId] === act.id 
-               : overlaps.columnIndex === overlaps.maxColumns - 1);
+               : overlaps.columnIndex === 0);
 
             const hideStart = connectedPlan && connectedPlan.startTime === act.actualStart;
             const hideEnd = connectedPlan && connectedPlan.timeType === 'range' && connectedPlan.endTime === act.actualEnd;
@@ -261,19 +252,10 @@ export default function TimelineView({ plans, actuals, totalHeight, getOffsetY, 
             let diffText = "";
             if (connectedPlan && connectedPlan.timeType === 'range') {
               const plannedDur = timeToMins(connectedPlan.endTime) - timeToMins(connectedPlan.startTime);
-              const summary = planActualSummary[connectedPlan.id];
-              
-              if (summary) {
-                // 仅在属于该计划的最后一条实际记录上显示累积偏差
-                if (act.id === summary.lastActualId) {
-                  const diffMins = summary.totalDur - plannedDur;
-                  if (diffMins !== 0) {
-                    diffText = ` · ${diffMins > 0 ? '+' : ''}${diffMins}m`;
-                  }
-                }
-              }
+              const actualDur = endMins - startMins;
+              const diffMins = actualDur - plannedDur;
+              if (diffMins !== 0) diffText = ` · ${diffMins > 0 ? '+' : ''}${diffMins}m`;
             }
-
 
             return (
               <div key={`act-${act.id}`} className="absolute pointer-events-none" style={{ top, height, left: 0, right: 0 }}>

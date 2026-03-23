@@ -1,19 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { X, Trash2, Check, ArrowRight, Clock, AlertTriangle } from 'lucide-react';
-import { TASK_COLORS } from '../utils/constants';
+import { COLOR_PRESETS, TASK_COLORS } from '../utils/constants';
 import { timeToMins, minsToTime, isOverlap } from '../utils/helpers';
 import WheelTimePicker from './WheelTimePicker';
 import TimeTrigger from './TimeTrigger';
 
-export default function ActualModal({ isOpen, onClose, initialData, plans, actuals, currentDate, onSave, onDelete, usedColors }) {
+export default function ActualModal({ isOpen, onClose, initialData, plans, actuals, currentDate, onSave, onDelete }) {
   const defaultPlan = !initialData ? plans.find(p => !p.completed && p.timeType !== 'none') : null;
   const [fromPlanId, setFromPlanId] = useState(initialData?.fromPlanId !== undefined ? initialData.fromPlanId : (defaultPlan?.id || 'none'));
   const [name, setName] = useState(initialData?.name || defaultPlan?.name || '');
   const [emoji, setEmoji] = useState(initialData?.emoji || defaultPlan?.emoji || '🏃‍♂️');
   const [actualStart, setActualStart] = useState(initialData?.actualStart || '09:00');
   const [actualEnd, setActualEnd] = useState(initialData?.actualEnd || '10:00');
-  const [color, setColor] = useState(initialData?.color || defaultPlan?.color || TASK_COLORS.find(c => !usedColors.has(c.hex))?.hex || TASK_COLORS[0].hex);
+  const initialColor = initialData?.color || defaultPlan?.color || COLOR_PRESETS[0].colors[0].hex;
+  const foundPresetIndex = COLOR_PRESETS.findIndex(p => p.colors.some(c => c.hex === initialColor));
+  const initialPresetIndex = foundPresetIndex !== -1 ? foundPresetIndex : COLOR_PRESETS.length;
+  const [activePreset, setActivePreset] = useState(initialPresetIndex);
+  const [color, setColor] = useState(initialColor);
   const [pickerTarget, setPickerTarget] = useState(null);
+  const [customHex, setCustomHex] = useState(initialColor);
+  useEffect(() => { setCustomHex(color); }, [color]);
+
+  const recentColors = Array.from(new Set([
+    ...(plans || []).map(p => p.color), 
+    ...(actuals || []).map(a => a.color)
+  ])).filter(Boolean).slice(0, 8);
 
   const [conflictInfo, setConflictInfo] = useState(null);
 
@@ -97,19 +108,94 @@ export default function ActualModal({ isOpen, onClose, initialData, plans, actua
                 </div>
                 {fromPlanId === 'none' && (
                   <div>
-                    <label className="block text-xs text-gray-400 mb-2 ml-1">专属色</label>
-                    <div className="flex flex-wrap gap-3">
-                      {TASK_COLORS.map(c => {
-                        const isDisabled = usedColors.has(c.hex) && c.hex !== initialData?.color;
-                        return <button type="button" key={c.hex} disabled={isDisabled} onClick={() => setColor(c.hex)} className={`w-10 h-10 rounded-full flex items-center justify-center transition-transform ${isDisabled ? 'opacity-20' : 'hover:scale-110'}`} style={{ backgroundColor: c.hex }}>{color === c.hex && <Check size={18} color="white" />}</button>;
-                      })}
+                    <div className="flex items-center justify-between mb-2 ml-1">
+                      <label className="block text-xs text-gray-400">专属色</label>
+                      <div className="flex gap-1 bg-gray-100 p-0.5 rounded-lg">
+                        {COLOR_PRESETS.map((preset, idx) => (
+                          <button
+                            key={preset.name}
+                            type="button"
+                            onClick={() => setActivePreset(idx)}
+                            className={`px-3 py-1 text-xs rounded-md transition-colors ${activePreset === idx ? 'bg-white shadow-sm text-gray-800 font-bold' : 'text-gray-500'}`}
+                          >
+                            {preset.name}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setActivePreset(COLOR_PRESETS.length)}
+                          className={`px-3 py-1 text-xs rounded-md transition-colors ${activePreset === COLOR_PRESETS.length ? 'bg-white shadow-sm text-gray-800 font-bold' : 'text-gray-500'}`}
+                        >
+                          自定义
+                        </button>
+                      </div>
                     </div>
+                    
+                    {activePreset < COLOR_PRESETS.length ? (
+                      <div className="flex flex-wrap gap-3">
+                        {COLOR_PRESETS[activePreset].colors.map(c => (
+                          <button 
+                            type="button" 
+                            key={c.hex} 
+                            onClick={() => setColor(c.hex)} 
+                            className="w-10 h-10 rounded-full flex items-center justify-center transition-transform hover:scale-110" 
+                            style={{ backgroundColor: c.hex }}
+                          >
+                            {color === c.hex && <Check size={18} color="white" />}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-3 mt-1">
+                        <div className="flex items-center gap-3">
+                          <div className="relative">
+                            <div 
+                              className="w-12 h-12 rounded-xl shadow-inner border border-gray-200 cursor-pointer"
+                              style={{ backgroundColor: color }}
+                              onClick={() => document.getElementById('actual-color-picker').click()}
+                            />
+                            <input 
+                              id="actual-color-picker"
+                              type="color" 
+                              value={color} 
+                              onChange={(e) => setColor(e.target.value)}
+                              className="absolute opacity-0 w-0 h-0"
+                            />
+                          </div>
+                          <input 
+                            type="text" 
+                            value={customHex}
+                            onChange={(e) => setCustomHex(e.target.value)}
+                            onBlur={(e) => {
+                              const val = e.target.value;
+                              if (/^#[0-9A-Fa-f]{6}$/.test(val)) setColor(val);
+                              else setCustomHex(color);
+                            }}
+                            className="border border-gray-200 rounded-lg px-3 py-2 w-28 text-center text-sm focus:outline-none focus:border-blue-500 uppercase"
+                          />
+                        </div>
+                        {recentColors.length > 0 && (
+                          <div className="mt-2">
+                            <div className="text-xs text-gray-400 mb-2">最近使用</div>
+                            <div className="flex flex-wrap gap-2">
+                              {recentColors.map(c => (
+                                <button
+                                  key={c}
+                                  type="button"
+                                  onClick={() => setColor(c)}
+                                  className="w-8 h-8 rounded-full flex items-center justify-center transition-transform hover:scale-110 shadow-sm"
+                                  style={{ backgroundColor: c }}
+                                >
+                                  {color === c && <Check size={14} color="white" />}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
-                <div className="flex gap-3 pt-4">
-                  {initialData && <button type="button" onClick={onDelete} className="px-5 py-4 bg-red-50 text-red-500 rounded-2xl font-bold"><Trash2 size={20} /></button>}
-                  <button type="button" onClick={handleSubmit} className="flex-1 bg-green-600 text-white rounded-2xl py-4 font-bold text-lg shadow-lg shadow-green-600/20 active:scale-[0.98]">{initialData ? '保存修改' : '记录执行'}</button>
-                </div>
               </div>
             </>
           )}
