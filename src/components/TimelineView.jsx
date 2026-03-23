@@ -355,10 +355,10 @@ export default function TimelineView({ plans, actuals, totalHeight, getOffsetY, 
                }}>
 
                 <div className="absolute border-[1.5px] border-white shadow-sm cursor-pointer hover:brightness-105 transition-all z-10 pointer-events-auto"
-                  style={{
+                   style={{
                     left: overlaps.isOverlapping ? (overlaps.columnIndex === 0 ? 'calc(50% + 4px)' : 'calc(50% + 28px)') : 'calc(50% + 4px)',
                     width: overlaps.isOverlapping ? '28px' : '48px',
-                    top: 0, height: '100%', backgroundColor: act.color,
+                    top: 0, height: '100%', background: `linear-gradient(to top, ${act.color}, ${act.color}BB)`,
                     borderRadius: isPointActual ? '24px' : '16px'
                   }}
                   onClick={(e) => {
@@ -375,7 +375,7 @@ export default function TimelineView({ plans, actuals, totalHeight, getOffsetY, 
                     }
                   }}
                 />
-
+                  
                 {isActiveActual && (
                   <div className="absolute flex flex-col justify-center items-start pl-2.5 py-2 min-w-0 cursor-pointer group hover:bg-black/[0.03] rounded-r-2xl transition-colors pointer-events-auto"
                     style={{ left: 'calc(50% + 60px)', width: 'calc(50% - 60px)', top: '50%', transform: 'translateY(-50%)' }}
